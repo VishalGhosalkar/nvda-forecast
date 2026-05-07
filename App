@@ -1,1 +1,52 @@
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+import xgboost as xgb
+import plotly.graph_objects as go
+from datetime import datetime
+
+st.set_page_config(page_title="NVDA 2026 Predictor", page_icon="📈")
+st.title("🤖 NVIDIA AI Price Forecaster")
+
+# sidebar - May 2026 Context
+st.sidebar.info(f"Today's Date: {datetime.now().strftime('%Y-%m-%d')}")
+st.sidebar.markdown("---")
+st.sidebar.write("Model: XGBoost Regressor")
+st.sidebar.write("Data: Live Yahoo Finance")
+
+@st.cache_data(ttl=3600) # Refresh every hour
+def load_live_data():
+    df = yf.download("NVDA", start="2024-01-01")
+    return df
+
+data = load_live_data()
+
+# Engineering Features
+df = data.copy()
+df['MA10'] = df['Close'].rolling(window=10).mean()
+df['Volatility'] = df['Close'].rolling(window=10).std()
+df['Target'] = df['Close'].shift(-1)
+train_df = df.dropna()
+
+# Model Training
+X = train_df[['Close', 'MA10', 'Volatility']]
+y = train_df['Target']
+model = xgb.XGBRegressor(n_estimators=100, learning_rate=0.05)
+model.fit(X[:-1], y[:-1]) # Train on history
+
+# Predict Tomorrow
+latest_data = X.tail(1)
+prediction = model.predict(latest_data)[0]
+current_price = data['Close'].iloc[-1]
+
+# Display
+col1, col2 = st.columns(2)
+col1.metric("Live NVDA Price", f"${current_price:.2f}")
+col2.metric("Model Prediction (Tomorrow)", f"${prediction:.2f}", 
+            delta=f"{prediction - current_price:.2f}")
+
+# Visual Chart
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=data.index[-20:], y=data['Close'][-20:], name="Last 20 Days"))
+st.plotly_chart(fig, use_container_width=True)
 
